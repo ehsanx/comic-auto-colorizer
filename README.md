@@ -19,7 +19,9 @@ Because this script uses heavy AI models (Stable Diffusion, ControlNet, IP-Adapt
 
 | Original Line Art | Prompt-Driven (No Reference) | Reference-Driven (IP-Adapter) |
 | :---: | :---: | :---: |
-| ![Original](images/original.png) | ![Prompt-Driven](images/prompt.png) | ![Reference-Driven](images/reference.png) |
+| <img src="images/original.png" width="250"/> | <img src="images/prompt.png" width="250"/> | <img src="images/reference.png" width="250"/> |
+| <img src="images/original3.png" width="250"/> | <img src="images/prompt3.png" width="250"/> | <img src="images/reference3.png" width="250"/> |
+| <img src="images/original2.png" width="250"/> | <img src="images/prompt2.png" width="250"/> | <img src="images/reference2.png" width="250"/> |
 
 ---
 
