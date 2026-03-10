@@ -128,7 +128,118 @@ Check out the sample files provided in this repository for a before-and-after lo
 
 ---
 
-## 📚 Where to Find Comics for Testing
+## ⚙️ Configuration Parameters Explained
+
+All key parameters are defined at the top of each notebook's Cell 2. This section explains what each one does and when you might want to change it.
+
+---
+
+### 🎨 Colour Balance
+
+**`IP_ADAPTER_SCALE`** *(Reference notebook only, default: `0.20`)*
+
+Controls how strongly your `ref.png` image overrides the text prompt. Think of it as a slider between "follow my prompt" (low) and "copy the reference palette" (high).
+
+- `0.10–0.20` — Prompt drives character colours; reference sets the general mood and tone.
+- `0.30–0.45` — Reference palette dominates. Useful for strict colour matching but can cause the reference colours to bleed across all elements (e.g. a warm-toned reference making jungle foliage orange instead of green).
+- **Rule of thumb:** If your reference image closely matches the characters and setting in your comic, go higher. If it is a general mood reference, stay at 0.20 or below.
+
+**`CONTROLNET_SCALE`** *(default: `0.95`)*
+
+Controls how strictly Stable Diffusion stays inside the original drawn linework. At 0.95, the AI colours inside the lines with very little deviation. Lowering this toward 0.70 gives the AI more creative freedom but risks hallucinating new shapes or ignoring panel structure. This is almost never worth changing.
+
+**`guidance_scale`** *(default: `7.0`, inside the `colorize` function)*
+
+Controls how literally Stable Diffusion interprets your text prompt. Higher values (9–12) produce more saturated, prompt-faithful colours but can look artificial. Lower values (5–6) are painterly but may ignore specific prompt terms like skin tone directions. 7.0 is a reliable default.
+
+---
+
+### ⚡ Quality vs. Speed
+
+**`NUM_STEPS`** *(default: `25`)*
+
+The number of diffusion inference steps per page. More steps = more refined colour blocking, but longer runtime.
+
+- `20` — Faster; colour regions slightly less refined. Fine for test runs.
+- `25` — Recommended default for Kaggle T4 GPU.
+- `30–40` — Marginal quality improvement with meaningfully longer runtime. Rarely worth it.
+
+**`INFERENCE_WIDTH`** *(default: `512`)*
+
+The resolution at which Stable Diffusion runs its colour generation. This is the most significant quality-vs-speed tradeoff in the pipeline.
+
+- `512` — Recommended. Runs reliably on Kaggle T4 x2 within session time limits.
+- `768` — Noticeably better per-panel detail, especially on faces and small figures. Roughly doubles runtime and risks GPU out-of-memory errors on T4. Only attempt if you have access to an A100 or P100.
+- Do not exceed `768` — the VAE decoder will run out of VRAM.
+
+**`COMPOSITE_WIDTH`** *(default: `1024`)*
+
+The resolution at which the original ink lines are composited onto the AI colour layer before upscaling. This directly affects text and linework quality in the final output.
+
+- `1024` is the practical ceiling for T4 without OOM risk. A hand-lettered capital letter is roughly twice as large at 1024px compared to 512px, which means the ink mask recovers real stroke geometry rather than just the darkest core pixels.
+- Do not lower this below `768` — text quality degrades visibly.
+
+---
+
+### 🔤 Text & Compositing
+
+**`OCR_BOX_PAD`** *(default: `10`)*
+
+The number of pixels added to each side of every text bounding box detected by EasyOCR before the white-fill erasure is applied. EasyOCR's boxes tend to clip tight to the detected text, missing stroke edges at the boundary.
+
+- `8–10` — Recommended range. Catches clipped edges without erasing adjacent background art.
+- Higher values risk erasing background detail near speech bubbles.
+- Lower values may leave text stroke edges visible in the AI input, causing garbled letter halos.
+
+**Multiply blend range** *(inside `composite_before_upscale`, default: `[60, 200]`)*
+
+This is the grayscale stretch applied before blending the original artwork on top of the AI colour layer. It maps the original image's grayscale range `[low, high]` to `[0, 255]` before the multiply blend. This is the single most impactful parameter for overall page feel and is covered in detail in the [Source Material section](#-source-material-grayscale-vs-pure-bw-line-art) below.
+
+**White protection threshold** *(inside `composite_before_upscale`, default: `gray > 250`)*
+
+After compositing, any pixel in the original that is brighter than this threshold is forced to pure white in the output. This protects panel gutters and speech bubble backgrounds from colour bleed. See the [Source Material section](#-source-material-grayscale-vs-pure-bw-line-art) for recommended values by scan type.
+
+---
+
+## 🖼️ Source Material: Grayscale vs. Pure B&W Line Art
+
+The pipeline's default settings are tuned for **grayscale-embedded comics** — scans where the artist's pencil shading, halftone dot patterns, and crosshatching exist as genuine midtone values between pure black and pure white. The multiply blend is specifically designed to exploit those midtones: dark pencil shading darkens the colour beneath it, giving the illusion of cel shading without the AI having to invent it.
+
+If you are instead working with **purely digital B&W line art** — where pixels are either solid black or solid white with only a thin anti-aliasing band between them — the default settings are not optimal. Here is how to adjust them.
+
+---
+
+### For Grayscale / Shaded Scans *(default)*
+
+> Traditional comic scans, pencilled pages, pages with halftone dots, crosshatching, or any page where midtone grey values carry meaningful shading information.
+
+```python
+# In composite_before_upscale:
+gray_clean = np.clip((gray.astype(np.float32) - 60) * (255.0 / (200 - 60)), 0, 255)
+white_protect = gray > 250
+```
+
+The wider stretch range `[60, 200]` preserves pencil shading and halftone dots as natural colour variation. The conservative white threshold `250` avoids accidentally flattening lightly shaded paper regions to white.
+
+---
+
+### For Pure B&W Line Art *(digital comics, clean modern scans)*
+
+> Digitally inked comics, clean vector-style scans, or any page where there are effectively no meaningful midtone values — just ink and paper.
+
+```python
+# In composite_before_upscale:
+gray_clean = np.clip((gray.astype(np.float32) - 20) * (255.0 / (120 - 20)), 0, 255)
+white_protect = gray > 200
+```
+
+The tighter stretch range `[20, 120]` forces a cleaner separation between ink and paper, producing crisper flat colour fills. The more aggressive white threshold `200` correctly treats all anti-aliasing and paper as white, since there is no meaningful midtone shading to preserve.
+
+> **Note:** The OCR, compositing order, upscaler, and seed logic work correctly for both types of source material. Only the two multiply parameters above need to change.
+
+---
+
+## 📚 Where to Find More Comics for Testing
 
 Since this colorization pipeline is specifically tuned to mathematically blend with the ink lines and halftones of vintage scans, it pairs perfectly with historical black-and-white archives. 
 
